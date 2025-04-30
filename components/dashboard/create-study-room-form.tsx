@@ -1,7 +1,6 @@
-"use client"
+"use client";
 
-import type React from "react"
-
+import * as React from "react"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Users, CheckCircle, AlertCircle } from "lucide-react"
@@ -11,7 +10,8 @@ interface FormData {
   capacity: string
   description: string
   date: string
-  time: string
+  start_time: string
+  end_time: string
   location: string
   mode: "online" | "offline" | "hybrid" | "" // Entry mode
   creator_id?: string // Optional field for manual entry
@@ -24,7 +24,8 @@ export default function CreateStudyRoomForm() {
     capacity: "",
     description: "",
     date: "",
-    time: "",
+    start_time: "",
+    end_time: "",
     location: "",
     mode: "",
   })
@@ -145,8 +146,9 @@ export default function CreateStudyRoomForm() {
     if (!formData.date.trim()) {
       newErrors.date = "Date is required"
     }
-    if (!formData.time.trim()) {
-      newErrors.time = "Time is required"
+    if (!formData.start_time.trim() || !formData.end_time.trim()) {
+      newErrors.start_time = "Start time is required"
+      newErrors.end_time = "End time is required"
     }
     if (!formData.location.trim()) {
       newErrors.location = "Location is required"
@@ -186,20 +188,38 @@ export default function CreateStudyRoomForm() {
       // Use either the fetched user ID or the manually entered one
       const creatorId = userId !== null ? userId : Number(formData.creator_id)
 
-      // Format the data according to what the API expects
+      // Format the data according to what the API expects using snake_case
       const requestData = {
         name: formData.name,
         capacity: Number(formData.capacity),
         creator_id: creatorId,
         description: formData.description,
         date: formData.date,
-        time: formData.time,
+        start_time: formData.start_time,
+        end_time: formData.end_time,
         location: formData.location,
         mode: formData.mode,
       }
 
-      console.log("Sending study room data:", requestData)
+      // Detailed logging for debugging
+      console.log('Form data being submitted:', {
+        ...formData,
+        capacity: Number(formData.capacity),
+        creator_id: creatorId
+      })
+      console.log('Request data being sent to API:', requestData)
 
+      // Detailed logging
+      console.log("Form data:", formData)
+      console.log("Sending study room data:", requestData)
+      console.log("Time values:", {
+        startTime: formData.startTime,
+        endTime: formData.endTime,
+        start_time: requestData.start_time,
+        end_time: requestData.end_time
+      })
+
+      console.log('Sending request to API...')
       const response = await fetch("https://studysmarterapp.onrender.com/api/study_rooms", {
         method: "POST",
         headers: {
@@ -208,27 +228,38 @@ export default function CreateStudyRoomForm() {
         },
         body: JSON.stringify(requestData),
       })
-
-      const data = await response.json()
-      setApiResponse(data) // Store the API response for debugging
-
+      
+      const responseData = await response.json()
+      console.log('API Response:', responseData)
+      setApiResponse(responseData) // Store the API response for debugging
+      
       if (!response.ok) {
-        console.error("API Error Response:", data)
-
-        // Check for specific error messages from the API
-        if (data.error) {
-          throw new Error(`API Error: ${data.error}`)
-        } else if (data.message) {
-          throw new Error(data.message)
-        } else {
-          throw new Error("Failed to create study room")
-        }
+        console.error("API Error Response:", responseData)
+        setErrors({
+          general: responseData.error || "Failed to create study room"
+        })
+        return
       }
 
-      console.log("Study room created successfully:", data)
+      console.log('API Response time values:', {
+        start_time: responseData.start_time,
+        end_time: responseData.end_time
+      })
+
+      // Save room metadata to localStorage
+      const roomMetadata = JSON.parse(localStorage.getItem('roomMetadata') || '{}');
+      roomMetadata[responseData.room_id] = {
+        date: formData.date,
+        start_time: formData.start_time,
+        end_time: formData.end_time,
+        location: formData.location,
+        mode: formData.mode
+      };
+      localStorage.setItem('roomMetadata', JSON.stringify(roomMetadata));
+      console.log('Saved room metadata:', roomMetadata[responseData.room_id]);
 
       // Show success message
-      setSuccessMessage("Study room created successfully!")
+      setSuccessMessage(responseData.message || "Study room created successfully!")
 
       // Reset form
       setFormData({
@@ -236,17 +267,14 @@ export default function CreateStudyRoomForm() {
         capacity: "",
         description: "",
         date: "",
-        time: "",
+        start_time: "",
+        end_time: "",
         location: "",
         mode: "",
-        creator_id: "",
       })
 
-      // Wait a moment to show the success message before redirecting
-      setTimeout(() => {
-        // Redirect to the study rooms page with a query parameter to trigger a refresh
-        router.push("/dashboard/study-rooms?refresh=true")
-      }, 1500)
+      // Redirect to the study rooms list with a refresh parameter
+      router.push("/dashboard/study-rooms?refresh=true")
     } catch (error) {
       console.error("Error creating study room:", error)
       setErrors({
@@ -396,17 +424,31 @@ export default function CreateStudyRoomForm() {
           {errors.date && <p className="mt-1 text-sm text-red-600">{errors.date}</p>}
         </div>
         {/* Time */}
-        <div>
-          <label htmlFor="time" className="block text-sm font-medium text-gray-700">Time*</label>
-          <input
-            type="time"
-            id="time"
-            name="time"
-            value={formData.time}
-            onChange={handleChange}
-            className={`mt-1 block w-full rounded-md border ${errors.time ? "border-red-500" : "border-gray-300"} px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm`}
-          />
-          {errors.time && <p className="mt-1 text-sm text-red-600">{errors.time}</p>}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label htmlFor="start_time" className="block text-sm font-medium text-gray-700">Start Time*</label>
+            <input
+              type="time"
+              id="start_time"
+              name="start_time"
+              value={formData.start_time}
+              onChange={handleChange}
+              className={`mt-1 block w-full rounded-md border ${errors.start_time ? "border-red-500" : "border-gray-300"} px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm`}
+            />
+            {errors.start_time && <p className="mt-1 text-sm text-red-600">{errors.start_time}</p>}
+          </div>
+          <div>
+            <label htmlFor="end_time" className="block text-sm font-medium text-gray-700">End Time*</label>
+            <input
+              type="time"
+              id="end_time"
+              name="end_time"
+              value={formData.end_time}
+              onChange={handleChange}
+              className={`mt-1 block w-full rounded-md border ${errors.end_time ? "border-red-500" : "border-gray-300"} px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm`}
+            />
+            {errors.end_time && <p className="mt-1 text-sm text-red-600">{errors.end_time}</p>}
+          </div>
         </div>
 
         {/* Location */}
@@ -418,7 +460,7 @@ export default function CreateStudyRoomForm() {
             name="location"
             value={formData.location}
             onChange={handleChange}
-            placeholder="Room 101, Main Building, or Zoom Link"
+            placeholder={formData.mode === "online" ? "Enter Zoom/Teams link" : formData.mode === "offline" ? "Enter room number or building" : "Enter physical location and/or meeting link"}
             className={`mt-1 block w-full rounded-md border ${errors.location ? "border-red-500" : "border-gray-300"} px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm`}
           />
           {errors.location && <p className="mt-1 text-sm text-red-600">{errors.location}</p>}

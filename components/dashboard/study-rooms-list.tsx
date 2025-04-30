@@ -13,11 +13,13 @@ interface StudyRoom {
   description?: string
   tags?: string[]
   date?: string
-  time?: string
+  start_time?: string
+  end_time?: string
   participants?: number
   location?: string
   host?: string
   creator_id?: number
+  mode?: "online" | "offline" | "hybrid"
 }
 
 // Type for the joined rooms in localStorage
@@ -83,26 +85,45 @@ export default function StudyRoomsList() {
       }
 
       const data = await response.json()
-      console.log("Fetched study rooms:", data)
+      console.log('Raw API response:', data)
 
       // Handle different response structures
       const rooms = Array.isArray(data) ? data : data.rooms || []
+      console.log('Room data before normalization:', rooms)
+
+      // Get room metadata from localStorage
+      const roomMetadata = JSON.parse(localStorage.getItem('roomMetadata') || '{}');
+      console.log('Room metadata from localStorage:', roomMetadata);
 
       // Normalize the data structure based on the minimal API response
-      const normalizedRooms = rooms.map((room: any) => ({
-        room_id: room.room_id || 0,
-        id: room.id || `room-${room.room_id || Math.random().toString(36).substr(2, 9)}`,
-        name: room.name || "Unnamed Room",
-        capacity: room.capacity || 0,
-        description: room.description || "No description available",
-        // Ensure tags is always an empty array if not provided
-        tags: [],
-        date: room.date || "Flexible",
-        time: room.time || "Flexible",
-        participants: room.participants || 0,
-        location: room.location || "Online",
-        host: room.host || "Anonymous",
-      }))
+      const normalizedRooms = rooms.map((room: any) => {
+        console.log('Raw room data:', room);
+        
+        // Get metadata for this room
+        const metadata = roomMetadata[room.room_id] || {};
+        console.log('Metadata for room', room.room_id, ':', metadata);
+        
+        const normalized = {
+          room_id: room.room_id || 0,
+          id: room.id || `room-${room.room_id || Math.random().toString(36).substr(2, 9)}`,
+          name: room.name || "Unnamed Room",
+          capacity: room.capacity || 0,
+          description: room.description || "No description available",
+          tags: [],
+          date: metadata.date || "",
+          start_time: metadata.start_time || "",
+          end_time: metadata.end_time || "",
+          participants: room.participants || 0,
+          location: metadata.location || "",
+          host: room.host || "Anonymous",
+          mode: metadata.mode || "hybrid"
+        };
+        console.log('Normalized room:', normalized);
+        return normalized;
+      }));
+      
+      // Log the normalized rooms for debugging
+      console.log('Normalized rooms:', normalizedRooms)
 
       // Store the rooms in localStorage for reference
       localStorage.setItem("studyRooms", JSON.stringify(normalizedRooms))
@@ -280,7 +301,6 @@ export default function StudyRoomsList() {
                     {(() => {
                       const joined = isRoomJoined(room.room_id);
                       let count = room.participants || 0;
-                      // 如果 participants 字段没有包含当前用户，则 +1
                       if (joined && count < room.capacity) count += 1;
                       return `${count}/${room.capacity} participants`;
                     })()}
@@ -288,11 +308,25 @@ export default function StudyRoomsList() {
                 </div>
                 <div className="flex items-center">
                   <MapPin className="mr-2 h-4 w-4 text-gray-400" />
-                  <span className="text-sm text-gray-600">{room.location || "Online"}</span>
+                  <span className="text-sm text-gray-600">
+                    {room.mode === 'online' ? 'Online' : room.location || 'No location specified'}
+                    {room.mode && ` (${room.mode})`}
+                  </span>
                 </div>
-                <div className="flex items-center">
-                  <Calendar className="mr-2 h-4 w-4 text-gray-400" />
-                  <span className="text-sm text-gray-600">{room.date || "Flexible"}</span>
+                <div className="flex flex-col space-y-1">
+                  <div className="flex items-center">
+                    <Calendar className="mr-2 h-4 w-4 text-gray-400" />
+                    <span className="text-sm text-gray-600">
+                      <span className="font-medium">Date:</span> {room.date || 'Not specified'}
+                    </span>
+                  </div>
+                  {(room.start_time || room.end_time) && (
+                    <div className="flex items-center pl-6">
+                      <span className="text-sm text-gray-600">
+                        <span className="font-medium">Time:</span> {room.start_time || 'Not specified'} - {room.end_time || 'Not specified'}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
               {isRoomJoined(room.room_id) && (

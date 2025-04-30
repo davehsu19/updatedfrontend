@@ -1,4 +1,5 @@
 "use client";
+
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -30,246 +31,195 @@ interface StudyRoomMessage {
   userId: string
   userName: string
   userAvatar: string
-  content: string
-  timestamp: string
 }
 
 interface StudyRoomMaterial {
-  id: string
-  name: string
-  type: string
-  size: string
-  uploadedBy: string
-  uploadedAt: string
+  id: string;
+  name: string;
+  type: string;
+  size: string;
+  uploadedBy: string;
+  uploadedAt: string;
 }
 
 interface StudyRoom {
-  id: string
-  room_id: number
-  name: string
-  title?: string
-  description: string
-  tags: string[]
-  visibility: "public" | "private"
-  time: string
-  date: string
-  duration: string
-  capacity: number
-  location: string
-  mode?: "online" | "offline" | "hybrid"
-  participants: StudyRoomParticipant[]
-  messages: StudyRoomMessage[]
-  materials: StudyRoomMaterial[]
-  creator_id: number
+  id: string;
+  room_id: number;
+  name: string;
+  title: string;
+  description: string;
+  tags: string[];
+  visibility: string;
+  startTime: string;
+  endTime: string;
+  date: string;
+  capacity: number;
+  location: string;
+  mode: string;
+  participants: Array<{
+    id: string;
+    name: string;
+    avatar: string;
+    role: "host" | "participant";
+    status: "online" | "offline";
+  }>;
+  messages: Array<{
+    id: string;
+    userId: string;
+    userName: string;
+    userAvatar: string;
+    content: string;
+    timestamp: string;
+  }>;
+  materials: Array<{
+    id: string;
+    name: string;
+    type: string;
+    size: string;
+    uploadedBy: string;
+    uploadedAt: string;
+  }>;
+  creator_id: number;
 }
 
-// Type for the joined rooms in localStorage
 interface JoinedRoom {
-  roomId: string | number
-  joinedAt: string
+  roomId: string;
 }
 
-export default function StudyRoomDetail({ roomId }: { roomId: string }) {
-  const router = useRouter()
-  const [room, setRoom] = useState<StudyRoom | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [isJoined, setIsJoined] = useState(false)
-  const [newMessage, setNewMessage] = useState("")
-  const [activeTab, setActiveTab] = useState<"chat" | "materials">("chat")
-  const [joinSuccess, setJoinSuccess] = useState(false)
-  const [leaveSuccess, setLeaveSuccess] = useState(false)
+interface StudyRoomDetailProps {
+  roomId: string;
+}
 
-  // Fetch room data
-  useEffect(() => {
-    const fetchRoomData = async () => {
-      setLoading(true)
-      try {
-        const token = localStorage.getItem("token")
-        if (!token) {
-          router.push("/login")
-          return
-        }
+export default function StudyRoomDetail({ roomId }: StudyRoomDetailProps) {
+  const router = useRouter();
+  const [room, setRoom] = useState<StudyRoom | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isJoined, setIsJoined] = useState(false);
+  const [newMessage, setNewMessage] = useState("");
+  const [activeTab, setActiveTab] = useState<"chat" | "materials">("chat");
+  const [joinSuccess, setJoinSuccess] = useState(false);
+  const [leaveSuccess, setLeaveSuccess] = useState(false);
 
-        // Fetch study room data from the backend
-        const response = await fetch(`https://studysmarterapp.onrender.com/api/study_rooms/${roomId}`, {
+  const fetchRoomData = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        router.push("/login");
+        return;
+      }
+
+      const response = await fetch(
+        `https://studysmarterapp.onrender.com/api/study_rooms/${roomId}`,
+        {
           method: "GET",
           headers: {
-            Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
-        })
-
-        if (!response.ok) {
-          // If the API fails, create a mock room with minimal data
-          console.warn("Failed to fetch study room data, using mock data")
-
-          // Try to get the room from the study rooms list in localStorage
-          const cachedRooms = JSON.parse(localStorage.getItem("studyRooms") || "[]")
-          const cachedRoom = cachedRooms.find((r: any) => r.room_id.toString() === roomId || r.id === roomId)
-
-          if (cachedRoom) {
-            createMockRoom(cachedRoom)
-          } else {
-            // Create a completely mock room if we can't find it in cache
-            createMockRoom({ room_id: Number.parseInt(roomId), name: "Study Room", capacity: 10 })
-          }
-          return
         }
+      );
 
-        const data = await response.json()
-        console.log("Fetched room data:", data)
-
-        // Handle different API response structures
-        if (data && (data.room_id || data.id)) {
-          createMockRoom(data)
-        } else {
-          throw new Error("Invalid room data format")
-        }
-      } catch (err) {
-        console.error("Error fetching room data:", err)
-        setError("Failed to load study room data. Please try again.")
-        setLoading(false)
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
-    }
 
-    // Helper function to create a mock room with the minimal data
-    const createMockRoom = (basicData: any) => {
-      // Get joined rooms from localStorage
-      const joinedRooms: JoinedRoom[] = JSON.parse(localStorage.getItem("joinedStudyRooms") || "[]")
+      const data = await response.json();
+      console.log("Fetched room data:", data);
 
-      // Check if the current user is already in the participants list
-      const isCurrentUserJoined = joinedRooms.some(
-        (jr) => jr.roomId.toString() === roomId.toString() || jr.roomId.toString() === basicData.room_id?.toString(),
-      )
+      const roomMetadata = JSON.parse(localStorage.getItem("roomMetadata") || "{}");
+      const metadata = roomMetadata[data.room_id] || {};
 
-      // Get current user info
-      const username = localStorage.getItem("username") || "Current User"
-      const userId = localStorage.getItem("userId") || "current-user"
+      const joinedRoomsRaw = localStorage.getItem("joinedStudyRooms");
+      const joinedRoomsArr = JSON.parse(joinedRoomsRaw || "[]");
 
-      // Create mock participants
-      let mockParticipants: StudyRoomParticipant[] = [
+      if (!Array.isArray(joinedRoomsArr)) {
+        console.error("joinedRoomsArr is not an array:", joinedRoomsArr);
+        return;
+      }
+
+      const userHasJoined = joinedRoomsArr.some(
+        (jr) => jr.roomId.toString() === data.room_id.toString()
+      );
+
+      const participants = [
         {
           id: "host-1",
-          name: "Room Host",
-          avatar: "/default-profile-photo.jpg",
+          name: "Host",
+          avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=host1",
           role: "host",
           status: "online",
         },
-        {
-          id: "participant-1",
-          name: "Alex Johnson",
-          avatar: "/default-profile-photo.jpg",
-          role: "participant",
-          status: "online",
-        },
-        {
-          id: "participant-2",
-          name: "Maria Garcia",
-          avatar: "/default-profile-photo.jpg",
-          role: "participant",
-          status: "away",
-        },
+        ...(userHasJoined
+          ? [
+              {
+                id: localStorage.getItem("userId") || "user-1",
+                name: localStorage.getItem("userName") || "User",
+                avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${
+                  localStorage.getItem("userId") || "user-1"
+                }`,
+                role: "participant",
+                status: "online",
+              },
+            ]
+          : []),
       ];
 
-      // If backend provides participants, coerce their roles
-      if (Array.isArray(basicData.participants)) {
-        mockParticipants = basicData.participants.map((p: any) => ({
-          id: p.id,
-          name: p.name,
-          avatar: p.avatar && !p.avatar.includes("mystical-forest") ? p.avatar : "/default-profile-photo.jpg",
-          role: p.role === "host" ? "host" : "participant",
-          status: p.status || "online",
-        })) as StudyRoomParticipant[];
-      }
+      const description = data.description || "No description available";
 
-      // Add current user to participants if they've joined
-      if (isCurrentUserJoined) {
-        mockParticipants.push({
-          id: userId,
-          name: username,
-          avatar: "/default-profile-photo.jpg",
-          role: "participant",
-          status: "online",
-        })
-      }
-
-      // Apply persisted participant statuses
-      const persistedStatuses = JSON.parse(localStorage.getItem("participantStatuses") || "{}");
-      const roomKey = (basicData.id || basicData.room_id)?.toString();
-      const roomStatuses = persistedStatuses[roomKey] || {};
-      mockParticipants = mockParticipants.map(p => ({ ...p, status: roomStatuses[p.id] || p.status }));
-
-      // Apply persisted participant avatars
-      const persistedAvatars = JSON.parse(localStorage.getItem("participantAvatars") || "{}");
-      const roomAvatars = persistedAvatars[roomKey] || {};
-      mockParticipants = mockParticipants.map(p => ({ ...p, avatar: roomAvatars[p.id] || p.avatar }));
-
-      // Create a complete mock room
       const mockRoom: StudyRoom = {
-        id: basicData.id || basicData.room_id.toString(),
-        room_id: basicData.room_id || Number.parseInt(basicData.id),
-        name: basicData.name || basicData.title || "Study Room",
-        description: basicData.description || "A collaborative study session for students.",
-        tags: basicData.tags || ["Study", "Collaboration"],
-        visibility: basicData.visibility || "public",
-        time: basicData.time || "2:00 PM - 4:00 PM",
-        date: basicData.date || new Date().toLocaleDateString(),
-        duration: basicData.duration || "2 hours",
-        capacity: basicData.capacity || 10,
-        location: basicData.location || "Online",
-        mode: basicData.mode || "online",
-        participants: mockParticipants,
+        id: `room-${data.room_id}`,
+        room_id: Number(data.room_id),
+        name: data.name || "Study Room",
+        title: data.title || "",
+        description,
+        tags: data.tags || ["study", "collaboration"],
+        visibility: "public",
+        startTime: metadata.start_time || data.startTime || "",
+        endTime: metadata.end_time || data.endTime || "",
+        date: metadata.date || data.date || "",
+        capacity: data.capacity || 10,
+        location: metadata.location || data.location || "",
+        mode: metadata.mode || data.mode || "hybrid",
+        participants,
         messages: [
           {
             id: "msg-1",
             userId: "host-1",
-            userName: "Room Host",
-            userAvatar: "/default-profile-photo.jpg",
-            content: "Welcome to the study room! Feel free to ask questions.",
-            timestamp: "10:30 AM",
-          },
-          {
-            id: "msg-2",
-            userId: "participant-1",
-            userName: "Alex Johnson",
-            userAvatar: "/default-profile-photo.jpg",
-            content: "Thanks for setting this up! I'm struggling with the concepts from chapter 5.",
-            timestamp: "10:35 AM",
+            userName: "Host",
+            userAvatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=host1",
+            content: "Welcome to the study room! Let's get started.",
+            timestamp: new Date().toISOString(),
           },
         ],
         materials: [
           {
             id: "material-1",
             name: "Study Guide.pdf",
-            type: "PDF",
-            size: "2.4 MB",
-            uploadedBy: "Room Host",
-            uploadedAt: "Yesterday",
-          },
-          {
-            id: "material-2",
-            name: "Practice Problems.docx",
-            type: "DOCX",
-            size: "1.1 MB",
-            uploadedBy: "Alex Johnson",
+            type: "pdf",
+            size: "2.5 MB",
+            uploadedBy: "Host",
             uploadedAt: "Today",
           },
         ],
-        creator_id: basicData.creator_id || 1,
-      }
+        creator_id: data.creator_id || 0,
+      };
 
-      setRoom(mockRoom)
-      setIsJoined(isCurrentUserJoined)
-      setLoading(false)
+      setRoom(mockRoom);
+      setLoading(false);
+      setIsJoined(userHasJoined);
+    } catch (err) {
+      console.error("Error fetching room data:", err);
+      setError(err instanceof Error ? err.message : "Failed to fetch room data");
+      setLoading(false);
     }
+  };
 
-    fetchRoomData()
-  }, [roomId, router])
+  useEffect(() => {
+    fetchRoomData();
+  }, [roomId]);
 
-  // Handle joining a room
   const handleJoinRoom = () => {
-    if (!room) return
+    if (!room) return;
 
     try {
       // Get current user info
@@ -298,15 +248,26 @@ export default function StudyRoomDetail({ roomId }: { roomId: string }) {
       })
 
       // Store the joined room in localStorage
-      const joinedRooms: JoinedRoom[] = JSON.parse(localStorage.getItem("joinedStudyRooms") || "[]")
+      const joinedRoomsRaw = localStorage.getItem("joinedStudyRooms");
+      const joinedRoomsArr = JSON.parse(joinedRoomsRaw || "[]");
+
+      if (!Array.isArray(joinedRoomsArr)) {
+        console.error("joinedRoomsArr is not an array:", joinedRoomsArr);
+        return;
+      }
+
       const roomIdentifier = room.room_id || room.id
 
-      if (!joinedRooms.some((jr) => jr.roomId.toString() === roomIdentifier.toString())) {
-        joinedRooms.push({
+      const userHasJoined = joinedRoomsArr.some(
+        (jr) => jr.roomId.toString() === data.room_id.toString()
+      );
+
+      if (!userHasJoined) {
+        joinedRoomsArr.push({
           roomId: roomIdentifier,
           joinedAt: new Date().toISOString(),
         })
-        localStorage.setItem("joinedStudyRooms", JSON.stringify(joinedRooms))
+        localStorage.setItem("joinedStudyRooms", JSON.stringify(joinedRoomsArr))
       }
 
       setIsJoined(true)
@@ -340,10 +301,17 @@ export default function StudyRoomDetail({ roomId }: { roomId: string }) {
       })
 
       // Remove the room from localStorage
-      const joinedRooms: JoinedRoom[] = JSON.parse(localStorage.getItem("joinedStudyRooms") || "[]")
+      const joinedRoomsRaw = localStorage.getItem("joinedStudyRooms");
+      const joinedRoomsArr = JSON.parse(joinedRoomsRaw || "[]");
+
+      if (!Array.isArray(joinedRoomsArr)) {
+        console.error("joinedRoomsArr is not an array:", joinedRoomsArr);
+        return;
+      }
+
       const roomIdentifier = room.room_id || room.id
 
-      const updatedJoinedRooms = joinedRooms.filter((jr) => jr.roomId.toString() !== roomIdentifier.toString())
+      const updatedJoinedRooms = joinedRoomsArr.filter((jr) => jr.roomId.toString() !== roomIdentifier.toString())
       localStorage.setItem("joinedStudyRooms", JSON.stringify(updatedJoinedRooms))
 
       setIsJoined(false)
@@ -504,7 +472,7 @@ export default function StudyRoomDetail({ roomId }: { roomId: string }) {
             <Clock className="mr-2 h-5 w-5 text-gray-400" />
             <div>
               <p className="text-xs text-gray-500">Time</p>
-              <p className="text-sm font-medium">{room.time}</p>
+              <p className="text-sm font-medium">{room.startTime} - {room.endTime}</p>
             </div>
           </div>
           <div className="flex items-center">
