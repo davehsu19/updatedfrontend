@@ -126,6 +126,11 @@ export default function StudyRoomDetail({ roomId }: StudyRoomDetailProps) {
       const data = await response.json();
       console.log("Fetched room data:", data);
 
+      // Log the description from the API response
+      console.log("Room description from API:", data.description);
+
+      const description = data.description || "No description available";
+
       const roomMetadata = JSON.parse(localStorage.getItem("roomMetadata") || "{}");
       const metadata = roomMetadata[data.room_id] || {};
 
@@ -163,8 +168,6 @@ export default function StudyRoomDetail({ roomId }: StudyRoomDetailProps) {
             ]
           : []),
       ];
-
-      const description = data.description || "No description available";
 
       const mockRoom: StudyRoom = {
         id: `room-${data.room_id}`,
