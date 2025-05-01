@@ -18,40 +18,61 @@ export default function UpcomingSchedule() {
     }
   })
 
-  const events = [
-    {
-      id: 1,
-      title: "Biology Study Session",
-      time: "10:00 AM - 12:00 PM",
-      type: "study",
-      day: 0, // today
-      status: "You are well prepared for this study session!"
-    },
-    {
-      id: 2,
-      title: "Psychology Quiz",
-      time: "2:00 PM - 3:00 PM",
-      type: "exam",
-      day: 1, // tomorrow
-      status: "Quiz is scheduled. Don't forget to review Chapter 5!"
-    },
-    {
-      id: 3,
-      title: "Math Group Meeting",
-      time: "4:00 PM - 5:30 PM",
-      type: "meeting",
-      day: 2, // day after tomorrow
-      status: "Meeting with your study group to discuss problem sets."
-    },
-    {
-      id: 4,
-      title: "Chemistry Lab",
-      time: "1:00 PM - 3:00 PM",
-      type: "lab",
-      day: 3,
-      status: "Lab safety equipment is ready. Arrive 10 minutes early."
-    },
-  ]
+  const [studyRooms, setStudyRooms] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    const fetchStudyRooms = async () => {
+      setLoading(true);
+      try {
+        const token = localStorage.getItem("token");
+        if (!token) {
+          setError("Please log in to view study rooms.");
+          setLoading(false);
+          return;
+        }
+        const response = await fetch("https://studysmarterapp.onrender.com/api/study_rooms", {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            Pragma: "no-cache",
+            Expires: "0",
+          },
+        });
+        if (!response.ok) throw new Error("Failed to fetch study rooms");
+        const data = await response.json();
+        const rooms = Array.isArray(data) ? data : data.rooms || [];
+        const roomMetadata = JSON.parse(localStorage.getItem('roomMetadata') || '{}');
+        const normalizedRooms = rooms.map((room: any) => {
+          const metadata = roomMetadata[room.room_id] || {};
+          return {
+            room_id: room.room_id || 0,
+            id: room.id || `room-${room.room_id || Math.random().toString(36).substr(2, 9)}`,
+            name: room.name || "Unnamed Room",
+            subject: room.subject || "",
+            capacity: room.capacity || 0,
+            description: room.description || "No description available",
+            date: metadata.date || "",
+            start_time: metadata.start_time || "",
+            end_time: metadata.end_time || "",
+            participants: room.participants || 0,
+            location: metadata.location || "",
+            host: room.host || "Anonymous",
+            mode: metadata.mode || "hybrid"
+          };
+        });
+        setStudyRooms(normalizedRooms);
+        setLoading(false);
+      } catch (err: any) {
+        setError(err.message || "Unknown error");
+        setLoading(false);
+      }
+    };
+    fetchStudyRooms();
+  }, []);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [modalTitle, setModalTitle] = useState("");
@@ -92,33 +113,51 @@ export default function UpcomingSchedule() {
         </div>
 
         <div className="space-y-3">
-          {events.map((event) => (
-            <div key={event.id} className="rounded-md border p-3 hover:bg-gray-50 cursor-pointer" onClick={() => handleEventClick(event)}>
-              <div className="flex items-center">
-                <div
-                  className={`mr-3 h-10 w-1 rounded-full ${
-                    event.type === "exam"
-                      ? "bg-red-500"
-                      : event.type === "study"
-                        ? "bg-blue-500"
-                        : event.type === "meeting"
-                          ? "bg-green-500"
-                          : "bg-purple-500"
-                  }`}
-                ></div>
-                <div>
-                  <h3 className="font-medium">{event.title}</h3>
-                  <div className="flex items-center text-sm text-gray-500">
-                    <Calendar className="mr-1 h-3 w-3" />
-                    <span>
-                      {event.day === 0 ? "Today" : event.day === 1 ? "Tomorrow" : `${weekDates[event.day].dayName}`},{" "}
-                      {event.time}
-                    </span>
+          {loading ? (
+            <div className="text-center text-gray-500 py-8">Loading study rooms...</div>
+          ) : error ? (
+            <div className="text-center text-red-600 py-8">{error}</div>
+          ) : studyRooms.length === 0 ? (
+            <div className="text-center text-gray-500 py-8">No study rooms available.</div>
+          ) : (
+            studyRooms.map((room) => {
+              // Try to find the day offset for this room's date
+              let eventDayLabel = "";
+              if (room.date) {
+                const eventDate = new Date(room.date);
+                const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+                const diffDays = Math.round((eventDate.getTime() - todayDate.getTime()) / (1000 * 60 * 60 * 24));
+                if (diffDays === 0) eventDayLabel = "Today";
+                else if (diffDays === 1) eventDayLabel = "Tomorrow";
+                else if (diffDays >= 0 && diffDays < weekDates.length) eventDayLabel = `${weekDates[diffDays].dayName}`;
+                else eventDayLabel = eventDate.toLocaleDateString();
+              }
+              return (
+                <div key={room.room_id} className="rounded-md border p-3 hover:bg-gray-50 cursor-pointer">
+                  <div className="flex items-center">
+                    <div className="mr-3 h-10 w-1 rounded-full bg-blue-500"></div>
+                    <div>
+                      <h3 className="font-medium">{room.name}</h3>
+                      <div className="flex items-center text-sm text-gray-500">
+                        <Calendar className="mr-1 h-3 w-3" />
+                        <span>
+                          {eventDayLabel}
+                          {room.start_time || room.end_time ? `, ${room.start_time || ''}${room.start_time && room.end_time ? ' - ' : ''}${room.end_time || ''}` : ''}
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        {(room.start_time || room.end_time) && (
+                          <div><span className="font-medium">Schedule:</span> {room.start_time || 'N/A'}{room.start_time && room.end_time ? ' - ' : ''}{room.end_time || ''}</div>
+                        )}
+                        {room.location && <div><span className="font-medium">Venue:</span> {room.location}</div>}
+                        {room.mode && <div><span className="font-medium">Mode:</span> {room.mode}</div>}
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </div>
-          ))}
+              );
+            })
+          )}
         </div>
 
         <div className="mt-4 text-center">
